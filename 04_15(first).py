@@ -4,118 +4,100 @@ from io import BytesIO
 import re
 
 st.set_page_config(page_title="비품 수량 자동 병합기", layout="wide")
-st.title("🏢 북경 치과전 비품 취합 자동화 (1+2항목 완전 대응)")
+st.title("🏢 참가업체 비품 주문서 자동 병합기 (최종 구조 대응 + 비고 포함)")
 
-uploaded_files = st.file_uploader(
-    "비품 주문서 파일 업로드 (여러 개 선택)", type=["xlsx"], accept_multiple_files=True
-)
+uploaded_files = st.file_uploader("비품 주문서 파일 업로드 (여러 개 선택)", type=["xlsx"], accept_multiple_files=True)
 
 @st.cache_data
-def process_file_full(file):
+def process_file(file):
     try:
         df = pd.read_excel(file, sheet_name='1부스', header=None)
+        company_name = df.iloc[7, 1] if not pd.isna(df.iloc[7, 1]) else "업체명 미기재"
 
-        company = df.iloc[7, 1] if not pd.isna(df.iloc[7, 1]) else "업체명 미기재"
-        manager = df.iloc[7, 4] if not pd.isna(df.iloc[7, 4]) else ""
-        booth_no = df.iloc[8, 4] if not pd.isna(df.iloc[8, 4]) else ""
-        phone = df.iloc[9, 1] if not pd.isna(df.iloc[9, 1]) else ""
-        email = df.iloc[8, 1] if not pd.isna(df.iloc[8, 1]) else ""
-        memo = df.iloc[16, 5] if not pd.isna(df.iloc[16, 5]) else ""
-
-        # 기본 비품: 17~36행
-        temp_df = df.iloc[17:36, [0, 2, 4]].copy()
-        temp_df.columns = ['품목', '기본제공수량', '최종기재수량']
+        # 17행부터 시작 (인덱스 16)
+        temp_df = df.iloc[16:36, [0, 2, 4, 5]].copy()
+        temp_df.columns = ['품목', '기본제공수량', '최종기재수량', '비고']
         temp_df = temp_df.dropna(subset=['품목'])
 
-        expanded_rows = []
-        for _, row in temp_df.iterrows():
-            item = row['품목']
-            qty = row['최종기재수량']
-            if isinstance(qty, str) and any(k in qty for k in ['인포데스크', '쇼케이스', '캐비닛']):
-                matches = re.findall(r'(인포데스크|쇼케이스|캐비닛)\s*\(\s*(\d+)\s*\)', qty)
-                for item_name, count in matches:
-                    expanded_rows.append({'ITEM': f"{item_name}", '수량': int(count)})
-            else:
-                def extract_sum(x):
-                    if isinstance(x, str):
-                        nums = re.findall(r'\d+', x)
-                        return sum(map(int, nums)) if nums else 0
-                    if pd.isna(x): return 0
-                    return int(x)
-                expanded_rows.append({'ITEM': item, '수량': extract_sum(qty)})
+        def extract_sum(x):
+            if isinstance(x, str):
+                nums = re.findall(r'\d+', x)
+                return sum(map(int, nums)) if nums else 0
+            if pd.isna(x):
+                return 0
+            return int(x)
 
-        basic_df = pd.DataFrame(expanded_rows)
-        basic_df['가격'] = 0
-        basic_df['합계'] = 0
-        basic_df['비고'] = ""
+        temp_df['기본제공수량(숫자)'] = temp_df['기본제공수량'].apply(extract_sum)
+        temp_df['최종기재수량(숫자)'] = temp_df['최종기재수량'].apply(extract_sum)
+        temp_df['업체명'] = company_name
 
-        # 추가 비품 (A33 기준 = index 32)
-        additional_rows = []
-        for i in range(32, df.shape[0]):
-            item = df.iloc[i, 0]
-            qty = df.iloc[i, 2]
-            price = df.iloc[i, 3]
-            memo_ = df.iloc[i, 5]
-            if pd.isna(item) or str(item).strip() == "":
-                continue
-            try:
-                qty = int(qty) if not pd.isna(qty) else 0
-                price = int(str(price).replace(",", "")) if not pd.isna(price) else 0
-                additional_rows.append({
-                    'ITEM': str(item).strip(),
-                    '수량': qty,
-                    '가격': price,
-                    '합계': qty * price,
-                    '비고': memo_ if not pd.isna(memo_) else ""
-                })
-            except:
-                continue
-
-        additional_df = pd.DataFrame(additional_rows)
-
-        # 병합 및 그룹화
-        all_items = pd.concat([basic_df, additional_df], ignore_index=True)
-        grouped = all_items.groupby("ITEM", as_index=False).agg({
-            "수량": "sum",
-            "가격": "sum",
-            "합계": "sum",
-            "비고": lambda x: " / ".join(set(x.dropna().astype(str))) if not x.isna().all() else ""
-        })
-
-        grouped.insert(0, "업체명", company)
-        return grouped
-
-    except Exception as e:
-        st.error(f"{file.name} 처리 중 오류 발생: {e}")
+        return temp_df[temp_df['최종기재수량(숫자)'] > 0]
+    except Exception:
         return None
 
+# ✅ 파일 업로드 처리
 if uploaded_files:
-    st.info("잠시만 기다려주세요. 업로드한 파일을 처리 중입니다...")
-    result_rows = []
+    all_data = []
     for file in uploaded_files:
-        row = process_file_full(file)
-        if row is not None:
-            result_rows.append(row)
+        result = process_file(file)
+        if result is not None:
+            all_data.append(result)
+        else:
+            st.warning(f"{file.name} 파일 처리 중 문제 발생, 건너뜀.")
 
-    if result_rows:
-        final_result = pd.concat(result_rows, ignore_index=True)
+    if all_data:
+        result_df = pd.concat(all_data, ignore_index=True)
 
-        st.success("✅ 모든 파일 처리 완료!")
-        st.dataframe(final_result)
+        # ▶️ Pivot Table
+        st.subheader("📊 Pivot Table (회사별 품목별 수량)")
+        pivot_df = result_df.pivot_table(
+            index='업체명',
+            columns='품목',
+            values='최종기재수량(숫자)',
+            aggfunc='sum',
+            fill_value=0
+        )
+        pivot_df.columns.name = None
+        pivot_df = pivot_df.reset_index()
+        st.dataframe(pivot_df)
 
-        def to_excel(df):
+        def pivot_to_excel(df):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='취합결과', startrow=0, startcol=0)
+                df.to_excel(writer, index=False, sheet_name='PivotSummary')
             return output.getvalue()
 
         st.download_button(
-            label="📥 최종 취합 파일 다운로드",
-            data=to_excel(final_result),
-            file_name="북경치과전_비품_취합_완성본.xlsx",
+            label="📥 Pivot 테이블 다운로드",
+            data=pivot_to_excel(pivot_df),
+            file_name="업체별_품목별_요약_테이블.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+        # ▶️ 업체별 수량 상세 보기
+        st.subheader("🏷️ 업체별 비품 수량 보기")
+        companies = result_df['업체명'].unique().tolist()
+        selected_companies = st.multiselect("업체를 선택하세요", companies, default=companies)
+
+        for company in selected_companies:
+            with st.expander(f"🏢 {company}", expanded=False):
+                st.dataframe(result_df[result_df['업체명'] == company][['품목', '기본제공수량', '최종기재수량', '비고']])
+
+        # ▶️ 전체 엑셀 다운로드
+        def to_excel(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Summary')
+            return output.getvalue()
+
+        st.download_button(
+            label="📥 전체 병합된 엑셀 다운로드",
+            data=to_excel(result_df),
+            file_name="업체별_비품_수량_통합.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
     else:
-        st.warning("⚠ 처리 가능한 데이터가 없습니다.")
+        st.error("처리 가능한 파일이 없습니다.")
 else:
-    st.info("왼쪽에서 .xlsx 파일을 하나 이상 업로드해 주세요.")
+    st.info("좌측 사이드바에서 파일을 업로드하세요.")
