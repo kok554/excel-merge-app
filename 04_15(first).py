@@ -5,7 +5,7 @@ import re
 
 st.set_page_config(page_title="비품 수량 자동 병합기", layout="wide")
 
-st.title("🏢 참가업체 비품 주문서 자동 병합기 (최종 구조 대응 + 비고 포함)")
+st.title("🏢 참가업체 비품 주문서 자동 병합기 (최종 구조 대응 + 비고 + Pivot)")
 
 uploaded_files = st.file_uploader("비품 주문서 파일 업로드 (여러 개 선택)", type=["xlsx"], accept_multiple_files=True)
 
@@ -13,10 +13,8 @@ uploaded_files = st.file_uploader("비품 주문서 파일 업로드 (여러 개
 def process_file(file):
     try:
         df = pd.read_excel(file, sheet_name='1부스', header=None)
-
         company_name = df.iloc[7, 1] if not pd.isna(df.iloc[7, 1]) else "업체명 미기재"
 
-        # 실제 데이터는 17행부터 시작 (인덱스 16)
         temp_df = df.iloc[16:36, [0, 2, 4, 5]].copy()
         temp_df.columns = ['품목', '기본제공수량', '최종기재수량', '비고']
         temp_df = temp_df.dropna(subset=['품목'])
@@ -49,8 +47,35 @@ if uploaded_files:
     if all_data:
         result_df = pd.concat(all_data, ignore_index=True)
 
-        st.subheader("🏷️ 업체별 비품 수량 보기")
+        # ▶️ Pivot Table 출력
+        if not result_df.empty:
+            st.subheader("📊 Pivot Table (회사별 품목별 수량)")
+            pivot_df = result_df.pivot_table(
+                index='업체명',
+                columns='품목',
+                values='최종기재수량(숫자)',
+                aggfunc='sum',
+                fill_value=0
+            )
+            pivot_df.columns.name = None
+            pivot_df = pivot_df.reset_index()
+            st.dataframe(pivot_df)
 
+            def pivot_to_excel(df):
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False, sheet_name='PivotSummary')
+                return output.getvalue()
+
+            st.download_button(
+                label="📥 Pivot 테이블 다운로드",
+                data=pivot_to_excel(pivot_df),
+                file_name="업체별_품목별_요약_테이블.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        # ▶️ 상세 테이블 출력
+        st.subheader("🏷️ 업체별 비품 수량 보기")
         companies = result_df['업체명'].unique().tolist()
         selected_companies = st.multiselect("업체를 선택하세요", companies, default=companies)
 
@@ -62,8 +87,7 @@ if uploaded_files:
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 df.to_excel(writer, index=False, sheet_name='Summary')
-            processed_data = output.getvalue()
-            return processed_data
+            return output.getvalue()
 
         st.download_button(
             label="📥 전체 병합된 엑셀 다운로드",
