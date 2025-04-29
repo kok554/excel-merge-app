@@ -47,7 +47,7 @@ def process_file_full(file):
                 matches = re.findall(r'(인포데스크|쇼케이스|캐비닛)\s*\(\s*(\d+)\s*\)', qty)
                 for _, count in matches:
                     combined_qty += int(count)
-                expanded_rows.append({'ITEM': '인포데스크/쇼케이스/캐비닛', '수량': combined_qty})
+                expanded_rows.append({'ITEM': '인포데스크/쇼케이스/캐비닛', '수량': combined_qty, '비고': memo})
             else:
                 def extract_sum(x):
                     if isinstance(x, str):
@@ -56,7 +56,7 @@ def process_file_full(file):
                     if pd.isna(x):
                         return 0
                     return int(x)
-                expanded_rows.append({'ITEM': item, '수량': extract_sum(qty)})
+                expanded_rows.append({'ITEM': item, '수량': extract_sum(qty), '비고': memo})
 
         expanded_df = pd.DataFrame(expanded_rows)
         expanded_df['가격'] = expanded_df['ITEM'].apply(lambda x: ITEM_PRICES.get(x, 0))
@@ -81,7 +81,7 @@ def process_file_full(file):
         })
 
         full_row = pd.concat([meta, item_df], axis=1)
-        return full_row, expanded_df
+        return full_row, expanded_df[['ITEM', '수량', '가격', '합계', '비고']]
 
     except Exception as e:
         st.error(f"{file.name} 처리 중 오류 발생: {e}")
@@ -97,19 +97,19 @@ if uploaded_files:
         if row is not None:
             result_rows.append(row)
         if detail is not None:
-            detail['업체명'] = file.name.replace('.xlsx', '')  # 파일명으로 구분
+            detail['업체명'] = file.name.replace('.xlsx', '')
             detail_rows.append(detail)
 
     if result_rows:
         final_result = pd.concat(result_rows, ignore_index=True)
-        detail_result = pd.concat(detail_rows, ignore_index=True)
+        detail_result = pd.concat(detail_rows, ignore_index=True)[['업체명', 'ITEM', '수량', '가격', '합계', '비고']]
 
         st.success("✅ 모든 파일 처리 완료!")
         st.subheader("📋 전체 취합 결과")
         st.dataframe(final_result)
 
         st.subheader("📦 ITEM 상세 내역")
-        st.dataframe(detail_result[['업체명', 'ITEM', '수량', '가격', '합계']])
+        st.dataframe(detail_result)
 
         def to_excel(df1, df2):
             output = BytesIO()
