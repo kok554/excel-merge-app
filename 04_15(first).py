@@ -45,6 +45,9 @@ def process_file_full(file):
             fill_value=0
         )
 
+        item_dict = dict(zip(temp_df['품목'], temp_df['최종수량']))
+        item_df = pd.DataFrame([item_dict])
+
         # 메타 정보 DataFrame
         meta = pd.DataFrame({
             'booth NO': [booth_no],
@@ -55,7 +58,7 @@ def process_file_full(file):
             '비고': [memo],
         })
 
-        full_row = pd.concat([meta.reset_index(drop=True), pivot.reset_index(drop=True)], axis=1)
+        full_row = pd.concat([meta, item_df], axis=1)
         return full_row
 
     except Exception as e:
