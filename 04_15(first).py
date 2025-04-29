@@ -5,43 +5,32 @@ import re
 
 st.set_page_config(page_title="비품 수량 자동 병합기", layout="wide")
 
-st.title("🏢 참가업체 비품 주문서 자동 병합기 (대용량 파일 최적화)")
+st.title("🏢 참가업체 비품 주문서 자동 병합기 (최종 구조 대응)")
 
 uploaded_files = st.file_uploader("비품 주문서 파일 업로드 (여러 개 선택)", type=["xlsx"], accept_multiple_files=True)
 
 @st.cache_data
 def process_file(file):
     try:
-        excel = pd.ExcelFile(file)
-        if '비품신청서 1부스' in excel.sheet_names:
-            sheet_name = '비품신청서 1부스'
-        else:
-            sheet_name = excel.sheet_names[0]
-
-        df = pd.read_excel(file, sheet_name=sheet_name)
+        df = pd.read_excel(file, sheet_name='1부스', header=None)
 
         company_name = df.iloc[7, 1] if not pd.isna(df.iloc[7, 1]) else "업체명 미기재"
 
-        start_idx = df[df.iloc[:,0].astype(str).str.contains("기본비품 제공사항", na=False)].index
-        if len(start_idx) == 0:
-            return None
-
-        start = start_idx[0] + 2
-
-        temp_df = df.iloc[start:start+20, [0,1,4]]
+        # 실제 데이터는 17행부터 시작 (인덱스 16)
+        temp_df = df.iloc[16:36, [0, 2, 4]].copy()
         temp_df.columns = ['품목', '기본제공수량', '추가요청수량']
-        temp_df = temp_df.dropna(subset=['품목']).copy()
+        temp_df = temp_df.dropna(subset=['품목'])
 
-        def to_number(x):
+        def extract_sum(x):
             if isinstance(x, str):
                 nums = re.findall(r'\d+', x)
-                return int(nums[0]) if nums else 0
+                return sum(map(int, nums)) if nums else 0
             if pd.isna(x):
                 return 0
             return int(x)
 
-        temp_df['기본제공수량'] = temp_df['기본제공수량'].apply(to_number)
-        temp_df['추가요청수량'] = temp_df['추가요청수량'].apply(to_number)
+        temp_df['기본제공수량'] = temp_df['기본제공수량'].apply(extract_sum)
+        temp_df['추가요청수량'] = temp_df['추가요청수량'].apply(extract_sum)
         temp_df['총수량'] = temp_df['기본제공수량'] + temp_df['추가요청수량']
         temp_df['업체명'] = company_name
 
