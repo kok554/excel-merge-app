@@ -15,7 +15,6 @@ def process_file_full(file):
     try:
         df = pd.read_excel(file, sheet_name='1부스', header=None)
 
-        # ✅ 메타 정보 추출
         company = df.iloc[7, 1] if not pd.isna(df.iloc[7, 1]) else "업체명 미기재"
         manager = df.iloc[7, 4] if not pd.isna(df.iloc[7, 4]) else ""
         booth_no = df.iloc[8, 4] if not pd.isna(df.iloc[8, 4]) else ""
@@ -23,7 +22,7 @@ def process_file_full(file):
         email = df.iloc[8, 1] if not pd.isna(df.iloc[8, 1]) else ""
         memo = df.iloc[16, 5] if not pd.isna(df.iloc[16, 5]) else ""
 
-        # ✅ 기본 비품: 17~36행
+        # 기본 비품: 17~36행
         temp_df = df.iloc[17:36, [0, 2, 4]].copy()
         temp_df.columns = ['품목', '기본제공수량', '최종기재수량']
         temp_df = temp_df.dropna(subset=['품목'])
@@ -32,7 +31,6 @@ def process_file_full(file):
         for _, row in temp_df.iterrows():
             item = row['품목']
             qty = row['최종기재수량']
-
             if isinstance(qty, str) and any(k in qty for k in ['인포데스크', '쇼케이스', '캐비닛']):
                 matches = re.findall(r'(인포데스크|쇼케이스|캐비닛)\s*\(\s*(\d+)\s*\)', qty)
                 for item_name, count in matches:
@@ -51,14 +49,13 @@ def process_file_full(file):
         basic_df['합계'] = 0
         basic_df['비고'] = ""
 
-        # ✅ 추가 비품: A33부터 (index 32)
+        # 추가 비품 (A33 기준 = index 32)
         additional_rows = []
         for i in range(32, df.shape[0]):
             item = df.iloc[i, 0]
             qty = df.iloc[i, 2]
             price = df.iloc[i, 3]
             memo_ = df.iloc[i, 5]
-
             if pd.isna(item) or str(item).strip() == "":
                 continue
             try:
@@ -76,9 +73,8 @@ def process_file_full(file):
 
         additional_df = pd.DataFrame(additional_rows)
 
-        # ✅ 병합 및 그룹화
+        # 병합 및 그룹화
         all_items = pd.concat([basic_df, additional_df], ignore_index=True)
-
         grouped = all_items.groupby("ITEM", as_index=False).agg({
             "수량": "sum",
             "가격": "sum",
@@ -86,25 +82,16 @@ def process_file_full(file):
             "비고": lambda x: " / ".join(set(x.dropna().astype(str))) if not x.isna().all() else ""
         })
 
-        # ✅ 메타 정보 열 추가
         grouped.insert(0, "업체명", company)
-        grouped.insert(1, "연락처", phone)
-        grouped.insert(2, "이메일", email)
-        grouped.insert(3, "부스번호", booth_no)
-        grouped.insert(4, "담당자", manager)
-        grouped.insert(5, "비고(전체)", memo)
-
         return grouped
 
     except Exception as e:
         st.error(f"{file.name} 처리 중 오류 발생: {e}")
         return None
 
-# ✅ 업로드 및 병합 처리
 if uploaded_files:
     st.info("잠시만 기다려주세요. 업로드한 파일을 처리 중입니다...")
     result_rows = []
-
     for file in uploaded_files:
         row = process_file_full(file)
         if row is not None:
