@@ -23,9 +23,9 @@ def process_file_full(file):
         memo = df.iloc[16, 5] if not pd.isna(df.iloc[16, 5]) else ""
 
         # 품목 테이블 (행 17~36, 열 0,2,4)
-        temp_df = df.iloc[16:36, [0, 2, 4]].copy()
+        temp_df = df.iloc[17:36, [0, 2, 4]].copy()  # 17행부터 시작
         temp_df.columns = ['품목', '기본제공수량', '최종기재수량']
-        temp_df = temp_df.dropna(subset=['품목'])
+        temp_df = temp_df.dropna(subset=['품목'])  # 품목 없는 행 제거
 
         def extract_sum(x):
             if isinstance(x, str):
