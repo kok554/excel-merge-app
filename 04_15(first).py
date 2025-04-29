@@ -27,18 +27,29 @@ def process_file_full(file):
         temp_df.columns = ['품목', '기본제공수량', '최종기재수량']
         temp_df = temp_df.dropna(subset=['품목'])  # 품목 없는 행 제거
 
-        def extract_sum(x):
-            if isinstance(x, str):
-                nums = re.findall(r'\d+', x)
-                return sum(map(int, nums)) if nums else 0
-            if pd.isna(x):
-                return 0
-            return int(x)
+        # 품목이 '인포데스크', '쇼케이스', '캐비닛'이고 수량이 여러 줄에 섞여있는 경우 파싱
+        expanded_rows = []
+        for _, row in temp_df.iterrows():
+            item = row['품목']
+            qty = row['최종기재수량']
+            if isinstance(qty, str) and any(k in qty for k in ['인포데스크', '쇼케이스', '캐비닛']):
+                matches = re.findall(r'(인포데스크|쇼케이스|캐비닛)\s*\(\s*(\d+)\s*\)', qty)
+                for item_name, count in matches:
+                    expanded_rows.append({'품목': item_name, '최종수량': int(count)})
+            else:
+                def extract_sum(x):
+                    if isinstance(x, str):
+                        nums = re.findall(r'\d+', x)
+                        return sum(map(int, nums)) if nums else 0
+                    if pd.isna(x):
+                        return 0
+                    return int(x)
+                expanded_rows.append({'품목': item, '최종수량': extract_sum(qty)})
 
-        temp_df['최종수량'] = temp_df['최종기재수량'].apply(extract_sum)
+        expanded_df = pd.DataFrame(expanded_rows)
 
         # 품목 수량을 dict 형태로 펼치기
-        item_dict = dict(zip(temp_df['품목'], temp_df['최종수량']))
+        item_dict = dict(zip(expanded_df['품목'], expanded_df['최종수량']))
         item_df = pd.DataFrame([item_dict])
 
         # 메타 정보 DataFrame
