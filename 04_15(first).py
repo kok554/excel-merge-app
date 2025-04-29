@@ -5,7 +5,7 @@ import re
 
 st.set_page_config(page_title="비품 수량 자동 병합기", layout="wide")
 
-st.title("🏢 참가업체 비품 주문서 자동 병합기 (최종 구조 대응)")
+st.title("🏢 참가업체 비품 주문서 자동 병합기 (최종 구조 대응 + 비고 포함)")
 
 uploaded_files = st.file_uploader("비품 주문서 파일 업로드 (여러 개 선택)", type=["xlsx"], accept_multiple_files=True)
 
@@ -17,8 +17,8 @@ def process_file(file):
         company_name = df.iloc[7, 1] if not pd.isna(df.iloc[7, 1]) else "업체명 미기재"
 
         # 실제 데이터는 17행부터 시작 (인덱스 16)
-        temp_df = df.iloc[16:36, [0, 2, 4]].copy()
-        temp_df.columns = ['품목', '기본제공수량', '추가요청수량']
+        temp_df = df.iloc[16:36, [0, 2, 4, 5]].copy()
+        temp_df.columns = ['품목', '기본제공수량', '최종기재수량', '비고']
         temp_df = temp_df.dropna(subset=['품목'])
 
         def extract_sum(x):
@@ -29,12 +29,11 @@ def process_file(file):
                 return 0
             return int(x)
 
-        temp_df['기본제공수량'] = temp_df['기본제공수량'].apply(extract_sum)
-        temp_df['추가요청수량'] = temp_df['추가요청수량'].apply(extract_sum)
-        temp_df['총수량'] = temp_df['기본제공수량'] + temp_df['추가요청수량']
+        temp_df['기본제공수량(숫자)'] = temp_df['기본제공수량'].apply(extract_sum)
+        temp_df['최종기재수량(숫자)'] = temp_df['최종기재수량'].apply(extract_sum)
         temp_df['업체명'] = company_name
 
-        return temp_df[temp_df['총수량'] > 0]
+        return temp_df[temp_df['최종기재수량(숫자)'] > 0]
     except Exception:
         return None
 
@@ -57,7 +56,7 @@ if uploaded_files:
 
         for company in selected_companies:
             with st.expander(f"🏢 {company}", expanded=False):
-                st.dataframe(result_df[result_df['업체명'] == company][['품목', '기본제공수량', '추가요청수량', '총수량']])
+                st.dataframe(result_df[result_df['업체명'] == company][['품목', '기본제공수량', '최종기재수량', '비고']])
 
         def to_excel(df):
             output = BytesIO()
