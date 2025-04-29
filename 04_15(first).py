@@ -37,14 +37,7 @@ def process_file_full(file):
 
         temp_df['최종수량'] = temp_df['최종기재수량'].apply(extract_sum)
 
-        pivot = temp_df.pivot_table(
-            index=pd.Index([company]),
-            columns='품목',
-            values='최종수량',
-            aggfunc='sum',
-            fill_value=0
-        )
-
+        # 품목 수량을 dict 형태로 펼치기
         item_dict = dict(zip(temp_df['품목'], temp_df['최종수량']))
         item_df = pd.DataFrame([item_dict])
 
@@ -58,6 +51,7 @@ def process_file_full(file):
             '비고': [memo],
         })
 
+        # 메타 + 품목 수량 열 결합
         full_row = pd.concat([meta, item_df], axis=1)
         return full_row
 
